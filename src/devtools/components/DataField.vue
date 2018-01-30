@@ -8,7 +8,12 @@
       placement="left"
       offset="24"
       :disabled="!field.meta"
-      @click.native="toggle"
+      :delay="{
+        show: 300,
+        hide: 0
+      }"
+      :open-group="'id' + _uid"
+      @click.native="onClick"
     >
       <span
         v-show="isExpandableType"
@@ -23,8 +28,8 @@
           class="edit-input key-input"
           :class="{ error: !keyValid }"
           v-model="editedKey"
-          @keyup.esc="cancelEdit()"
-          @keyup.enter="submitEdit()"
+          @keydown.esc.capture.stop.prevent="cancelEdit()"
+          @keydown.enter="submitEdit()"
         >
       </span>
       <span v-else class="key" :class="{ abstract: fieldOptions.abstract }">{{ field.key }}</span><span class="colon" v-if="!fieldOptions.abstract">:</span>
@@ -39,26 +44,29 @@
           :class="{ error: !valueValid }"
           v-model="editedValue"
           list="special-tokens"
-          @keyup.esc="cancelEdit()"
-          @keyup.enter="submitEdit()"
+          @keydown.esc.capture.stop.prevent="cancelEdit()"
+          @keydown.enter="submitEdit()"
         >
         <span class="actions">
-          <i
+          <BaseIcon
             v-if="!editValid"
-            class="icon-button material-icons warning"
+            class="icon-button warning"
             v-tooltip="editErrorMessage"
-          >warning</i>
+            icon="warning"
+          />
           <template v-else>
-            <i
-              class="icon-button material-icons"
-              v-tooltip="cancelEditTooltip"
+            <BaseIcon
+              class="icon-button medium"
+              icon="cancel"
+              v-tooltip="$t('DataField.edit.cancel.tooltip')"
               @click="cancelEdit()"
-            >close</i>
-            <i
-              class="icon-button material-icons"
-              v-tooltip="submitEditTooltip"
+            />
+            <BaseIcon
+              class="icon-button"
+              icon="save"
+              v-tooltip="$t('DataField.edit.submit.tooltip')"
               @click="submitEdit()"
-            >done</i>
+            />
           </template>
         </span>
       </span>
@@ -67,35 +75,42 @@
           class="value"
           :class="valueClass"
           @dblclick="openEdit()"
-        >{{ formattedValue }}</span>
+          v-tooltip="valueTooltip"
+          v-html="formattedValue"
+        />
         <span class="actions">
-          <i
+          <BaseIcon
             v-if="isValueEditable"
-            class="edit-value icon-button material-icons"
+            class="edit-value icon-button"
+            icon="edit"
             v-tooltip="'Edit value'"
             @click="openEdit()"
-          >edit</i>
+          />
           <template v-if="quickEdits">
-            <i
+            <BaseIcon
               v-for="(info, index) of quickEdits"
               :key="index"
-              class="quick-edit icon-button material-icons"
+              class="quick-edit icon-button"
+              :class="info.class"
+              :icon="info.icon"
               v-tooltip="info.title || 'Quick edit'"
               @click="quickEdit(info, $event)"
-            >{{ info.icon }}</i>
+            />
           </template>
-          <i
+          <BaseIcon
             v-if="isSubfieldsEditable && !addingValue"
-            class="add-value icon-button material-icons"
+            class="add-value icon-button"
+            icon="add_circle"
             v-tooltip="'Add new value'"
             @click="addNewValue()"
-          >add_circle</i>
-          <i
+          />
+          <BaseIcon
             v-if="removable"
-            class="remove-field icon-button material-icons"
+            class="remove-field icon-button"
+            icon="delete"
             v-tooltip="'Remove value'"
             @click="removeField()"
-          >delete</i>
+          />
         </span>
       </template>
 
@@ -149,7 +164,10 @@ import {
   NEGATIVE_INFINITY,
   NAN,
   isPlainObject,
-  sortByKey
+  sortByKey,
+  openInEditor,
+  escape,
+  specialTokenToString
 } from 'src/util'
 
 import DataFieldEdit from '../mixins/data-field-edit'
@@ -212,11 +230,13 @@ export default {
         return 'literal'
       } else if (value && value._custom) {
         return 'custom'
-      } else if (specialTypeRE.test(value)) {
-        const [, type] = specialTypeRE.exec(value)
-        return `native ${type}`
-      } else if (type === 'string' && !rawTypeRE.test(value)) {
-        return 'string'
+      } else if (type === 'string') {
+        if (specialTypeRE.test(value)) {
+          const [, type] = specialTypeRE.exec(value)
+          return `native ${type}`
+        } else {
+          return 'string'
+        }
       } else if (Array.isArray(value)) {
         return 'array'
       } else if (isPlainObject(value)) {
@@ -250,18 +270,11 @@ export default {
 
     formattedValue () {
       const value = this.field.value
+      let result
       if (this.fieldOptions.abstract) {
         return ''
-      } else if (value === null) {
-        return 'null'
-      } else if (value === UNDEFINED) {
-        return 'undefined'
-      } else if (value === NAN) {
-        return 'NaN'
-      } else if (value === INFINITY) {
-        return 'Infinity'
-      } else if (value === NEGATIVE_INFINITY) {
-        return '-Infinity'
+      } else if ((result = specialTokenToString(value))) {
+        return result
       } else if (this.valueType === 'custom') {
         return value._custom.display
       } else if (this.valueType === 'array') {
@@ -269,13 +282,13 @@ export default {
       } else if (this.valueType === 'plain-object') {
         return 'Object' + (Object.keys(value).length ? '' : ' (empty)')
       } else if (this.valueType.includes('native')) {
-        return specialTypeRE.exec(value)[2]
+        return escape(specialTypeRE.exec(value)[2])
       } else if (typeof value === 'string') {
         var typeMatch = value.match(rawTypeRE)
         if (typeMatch) {
-          return typeMatch[1]
+          return escape(typeMatch[1])
         } else {
-          return JSON.stringify(value)
+          return `<span>"</span>${escape(value)}<span>"</span>`
         }
       } else {
         return value
@@ -300,17 +313,31 @@ export default {
           ...inherit
         }))
       } else if (typeof value === 'object') {
-        value = sortByKey(Object.keys(value).map(key => ({
+        value = Object.keys(value).map(key => ({
           key,
           value: value[key],
           ...inherit
-        })))
+        }))
+        if (this.valueType !== 'custom') {
+          value = sortByKey(value)
+        }
       }
       return value
     },
 
     limitedSubFields () {
       return this.formattedSubFields.slice(0, this.limit)
+    },
+
+    valueTooltip () {
+      const type = this.valueType
+      if (type === 'custom') {
+        return this.field.value._custom.tooltip
+      } else if (type.indexOf('native ') === 0) {
+        return type.substr('native '.length)
+      } else {
+        return null
+      }
     },
 
     fieldOptions () {
@@ -345,10 +372,22 @@ export default {
   },
 
   methods: {
-    toggle (event) {
+    onClick (event) {
+      // Cancel if target is interactive
       if (event.target.tagName === 'INPUT' || event.target.className.includes('button')) {
         return
       }
+
+      // CustomValue API `file`
+      if (this.valueType === 'custom' && this.fieldOptions.file) {
+        return openInEditor(this.fieldOptions.file)
+      }
+
+      // Default action
+      this.toggle()
+    },
+
+    toggle () {
       if (this.isExpandableType) {
         this.expanded = !this.expanded
 
@@ -394,13 +433,14 @@ export default {
     top -1px
     .icon-button
       user-select none
-      font-size 14px
+      width 16px
+      height @width
       &:first-child
         margin-left 6px
       &:not(:last-child)
         margin-right 6px
-    .warning
-      color $orange
+    .warning >>> svg
+      fill $orange
   &:hover,
   &.editing
     .actions
@@ -438,15 +478,22 @@ export default {
     color: #e36eec
   &.abstract
     color $blueishGrey
+    .dark &
+      color lighten($blueishGrey, 20%)
 .value
   display inline-block
   color #444
   &.string, &.native
-    color #c41a16
+    color $red
+  &.string
+    >>> span
+      color $black
+      .dark &
+        color $red
   &.null
     color #999
   &.literal
-    color #0033cc
+    color $vividBlue
   &.raw-boolean
     width 36px
   &.custom
@@ -459,6 +506,21 @@ export default {
         content '<'
       &::after
         content '>'
+    &.type-function
+      font-style italic
+      >>> span
+        color $vividBlue
+        font-family dejavu sans mono, monospace
+        .platform-mac &
+          font-family Menlo, monospace
+        .platform-windows &
+          font-family Consolas, Lucida Console, Courier New, monospace
+        .dark &
+          color $purple
+    &.type-component-definition
+      color $green
+      >>> span
+        color $darkerGrey
   .dark &
     color #bdc6cf
     &.string, &.native
@@ -466,7 +528,7 @@ export default {
     &.null
       color #999
     &.literal
-      color #997fff
+      color $purple
 
 .meta
   font-size 12px

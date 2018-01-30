@@ -4,18 +4,10 @@
 import { highlight, unHighlight, getInstanceRect } from './highlighter'
 import { initVuexBackend } from './vuex'
 import { initEventsBackend } from './events'
-import { stringify, classify, camelize, set, parse } from '../util'
-import path from 'path'
+import { findRelatedComponent } from './utils'
+import { stringify, classify, camelize, set, parse, getComponentName } from '../util'
 import ComponentSelector from './component-selector'
-
-// Use a custom basename functions instead of the shimed version
-// because it doesn't work on Windows
-function basename (filename, ext) {
-  return path.basename(
-    filename.replace(/^[a-zA-Z]:/, '').replace(/\\/g, '/'),
-    ext
-  )
-}
+import config from './config'
 
 // hook should have been injected before this executes.
 const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__
@@ -39,6 +31,10 @@ export function initBackend (_bridge) {
   } else {
     hook.once('init', connect)
   }
+
+  config(bridge)
+
+  initRightClick()
 }
 
 function connect () {
@@ -65,7 +61,7 @@ function connect () {
     const instance = instanceMap.get(id)
     bindToConsole(instance)
     flush()
-    bridge.send('instance-details', stringify(getInstanceDetails(id)))
+    bridge.send('instance-selected')
   })
 
   bridge.on('scroll-to-instance', id => {
@@ -380,6 +376,7 @@ export function getCustomInstanceDetails (instance) {
       type: 'component',
       id: instance.__VUE_DEVTOOLS_UID__,
       display: getInstanceName(instance),
+      tooltip: 'Component instance',
       value: reduceStateList(state),
       fields: {
         abstract: true
@@ -408,14 +405,8 @@ export function reduceStateList (list) {
  */
 
 export function getInstanceName (instance) {
-  const name = instance.$options.name || instance.$options._componentTag
-  if (name) {
-    return name
-  }
-  const file = instance.$options.__file // injected by vue-loader
-  if (file) {
-    return classify(basename(file, '.vue'))
-  }
+  const name = getComponentName(instance.$options)
+  if (name) return name
   return instance.$root === instance
     ? 'Root'
     : 'Anonymous Component'
@@ -441,11 +432,11 @@ function processProps (instance) {
         type: 'props',
         key: prop.path,
         value: instance[prop.path],
-        meta: {
+        meta: options ? {
           type: options.type ? getPropType(options.type) : 'any',
           required: !!options.required,
           mode: propModes[prop.mode]
-        }
+        } : {}
       }
     })
   } else if ((props = instance.$options.props)) {
@@ -458,9 +449,11 @@ function processProps (instance) {
         type: 'props',
         key,
         value: instance[key],
-        meta: {
+        meta: prop ? {
           type: prop.type ? getPropType(prop.type) : 'any',
           required: !!prop.required
+        } : {
+          type: 'invalid'
         }
       })
     }
@@ -562,27 +555,30 @@ function processComputed (instance) {
  */
 
 function processRouteContext (instance) {
-  const route = instance.$route
-  if (route) {
-    const { path, query, params } = route
-    const value = { path, query, params }
-    if (route.fullPath) value.fullPath = route.fullPath
-    if (route.hash) value.hash = route.hash
-    if (route.name) value.name = route.name
-    if (route.meta) value.meta = route.meta
-    return [{
-      key: '$route',
-      value: {
-        _custom: {
-          type: 'router',
-          abstract: true,
-          value
+  try {
+    const route = instance.$route
+    if (route) {
+      const { path, query, params } = route
+      const value = { path, query, params }
+      if (route.fullPath) value.fullPath = route.fullPath
+      if (route.hash) value.hash = route.hash
+      if (route.name) value.name = route.name
+      if (route.meta) value.meta = route.meta
+      return [{
+        key: '$route',
+        value: {
+          _custom: {
+            type: 'router',
+            abstract: true,
+            value
+          }
         }
-      }
-    }]
-  } else {
-    return []
+      }]
+    }
+  } catch (e) {
+    // Invalid $router
   }
+  return []
 }
 
 /**
@@ -719,12 +715,35 @@ function setStateValue ({ id, path, value, newKey, remove }) {
       if (value) {
         parsedValue = parse(value, true)
       }
+      const api = isLegacy ? {
+        $set: hook.Vue.set,
+        $delete: hook.Vue.delete
+      } : instance
       set(instance._data, path, parsedValue, (obj, field, value) => {
-        (remove || newKey) && instance.$delete(obj, field)
-        !remove && instance.$set(obj, newKey || field, value)
+        (remove || newKey) && api.$delete(obj, field)
+        !remove && api.$set(obj, newKey || field, value)
       })
     } catch (e) {
       console.error(e)
     }
   }
+}
+
+function initRightClick () {
+  // Start recording context menu when Vue is detected
+  // event if Vue devtools are not loaded yet
+  document.addEventListener('contextmenu', event => {
+    const el = event.target
+    if (el) {
+      // Search for parent that "is" a component instance
+      const instance = findRelatedComponent(el)
+      if (instance) {
+        window.__VUE_DEVTOOLS_CONTEXT_MENU_HAS_TARGET__ = true
+        window.__VUE_DEVTOOLS_CONTEXT_MENU_TARGET__ = instance
+        return
+      }
+    }
+    window.__VUE_DEVTOOLS_CONTEXT_MENU_HAS_TARGET__ = null
+    window.__VUE_DEVTOOLS_CONTEXT_MENU_TARGET__ = null
+  })
 }

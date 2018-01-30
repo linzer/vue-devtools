@@ -7,7 +7,7 @@
         <span class="title-bracket">&gt;</span>
       </span>
       <div class="search">
-        <i class="material-icons">search</i>
+        <BaseIcon icon="search"/>
         <input placeholder="Filter inspected data" v-model.trim="filter">
       </div>
       <a
@@ -16,16 +16,16 @@
         v-tooltip="'Inspect DOM'"
         @click="inspectDOM"
       >
-        <i class="material-icons">code</i>
+        <BaseIcon icon="code"/>
         <span>Inspect DOM</span>
       </a>
       <a
         v-if="target.file"
         class="button"
-        v-tooltip="openEditorTooltip"
+        v-tooltip="target.file && $t('ComponentInspector.openInEditor.tooltip', { file: target.file })"
         @click="openInEditor"
       >
-        <i class="material-icons">launch</i>
+        <BaseIcon icon="launch"/>
         <span>Open in editor</span>
       </a>
     </action-header>
@@ -48,7 +48,7 @@ import { mapState } from 'vuex'
 import ScrollPane from 'components/ScrollPane.vue'
 import ActionHeader from 'components/ActionHeader.vue'
 import StateInspector from 'components/StateInspector.vue'
-import { searchDeepInObject, sortByKey, classify } from 'src/util'
+import { searchDeepInObject, sortByKey, classify, openInEditor } from 'src/util'
 import groupBy from 'lodash.groupby'
 
 export default {
@@ -81,9 +81,6 @@ export default {
           [el.key]: el.value
         }, this.filter)
       })), 'type')
-    },
-    openEditorTooltip () {
-      return this.target.file && `Open <span class="mono green"><i class="material-icons">insert_drive_file</i>${this.target.file}</span> in editor`
     }
   },
   methods: {
@@ -99,25 +96,7 @@ export default {
     },
     openInEditor () {
       const file = this.target.file
-      const src = `fetch('/__open-in-editor?file=${file}').then(response => {
-        if (response.ok) {
-          console.log('File ${file} opened in editor')
-        } else {
-          const msg = 'Opening component ${file} failed'
-          if (__VUE_DEVTOOLS_TOAST__) {
-            __VUE_DEVTOOLS_TOAST__(msg, 'error')
-          } else {
-            console.log('%c' + msg, 'color:red')
-          }
-          console.log('Check the setup of your project, see https://github.com/vuejs/vue-devtools/blob/master/docs/open-in-editor.md')
-        }
-      })`
-      if (this.$isChrome) {
-        chrome.devtools.inspectedWindow.eval(src)
-      } else {
-        // eslint-disable-next-line no-eval
-        eval(src)
-      }
+      openInEditor(file)
     }
   }
 }
@@ -126,5 +105,6 @@ export default {
 <style lang="stylus" scoped>
 .title
   white-space nowrap
+  position relative
+  top -1px
 </style>
-

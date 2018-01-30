@@ -18,6 +18,8 @@ Works with [vuex](https://github.com/vuejs/vuex) for time-travel debugging:
 
 - [Get the Firefox Addon](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
 
+- [Get standalone Electron app (works with any environment!)](https://github.com/vuejs/vue-devtools/blob/master/shells/electron/README.md)
+
 - [Workaround for Safari](https://github.com/vuejs/vue-devtools/blob/master/docs/workaround-for-safari.md)
 
 #### Open component in editor
@@ -72,7 +74,7 @@ To enable this feature, follow [this guide](./docs/open-in-editor.md).
 	When using Yarn, just replace `npm` with `yarn`.
 
 
-### Commom problems and how to fix
+### Common problems and how to fix
 
 1. Fixing "Download the Vue Devtools for a better development experience" console message when working locally over `file://` protocol:
   1.1 - Google Chrome: Right click on vue-devtools icon and click "Manage Extensions" then search for vue-devtools on the extensions list. Check the "Allow access to file URLs" box.

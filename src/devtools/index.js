@@ -3,22 +3,7 @@ import App from './App.vue'
 import store from './store'
 import './plugins'
 import { parse } from '../util'
-
-// Env
-
-const isChrome = typeof chrome !== 'undefined' && !!chrome.devtools
-const isMac = navigator.platform === 'MacIntel'
-const keys = {
-  ctrl: isMac ? '&#8984;' : 'Ctrl',
-  shift: 'Shift',
-  alt: isMac ? '&#8997;' : 'Alt'
-}
-
-Object.defineProperties(Vue.prototype, {
-  '$isChrome': { get: () => isChrome },
-  '$isMac': { get: () => isMac },
-  '$keys': { get: () => keys }
-})
+import { isChrome, initEnv } from './env'
 
 // UI
 
@@ -147,12 +132,17 @@ function initApp (shell) {
       })
     })
 
+    initEnv(Vue)
+
     app = new Vue({
       extends: App,
+
       store,
+
       data: {
         isDark
       },
+
       watch: {
         isDark: {
           handler (value) {
@@ -166,6 +156,8 @@ function initApp (shell) {
         }
       }
     }).$mount('#app')
+
+    store.dispatch('init')
   })
 }
 

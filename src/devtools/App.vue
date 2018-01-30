@@ -10,32 +10,40 @@
         <span class="message" :key="message">{{ message }}</span>
       </transition>
     </span>
-    <a class="button components"
+    <a
+      class="button components"
       :class="{ active: tab === 'components'}"
+      v-tooltip="$t('App.components.tooltip')"
       @click="switchTab('components')"
-      v-tooltip="'Switch to Components'">
-      <i class="material-icons">device_hub</i>
+    >
+      <BaseIcon icon="device_hub"/>
       <span class="pane-name">Components</span>
     </a>
-    <a class="button vuex"
+    <a
+      class="button vuex"
       :class="{ active: tab === 'vuex'}"
+      v-tooltip="$t('App.vuex.tooltip')"
       @click="switchTab('vuex')"
-      v-tooltip="'Switch to Vuex'">
-      <i class="material-icons">restore</i>
+    >
+      <BaseIcon icon="restore"/>
       <span class="pane-name">Vuex</span>
     </a>
-    <a class="button events"
+    <a
+      class="button events"
       :class="{ active: tab === 'events' }"
+      v-tooltip="$t('App.events.tooltip')"
       @click="switchTab('events')"
-      v-tooltip="'Switch to Events'">
-      <i class="material-icons">grain</i>
+    >
+      <BaseIcon icon="grain"/>
       <span class="pane-name">Events</span>
       <span class="event-count" v-if="newEventCount > 0">{{ newEventCount }}</span>
     </a>
-    <a class="button refresh"
+    <a
+      class="button refresh"
+      v-tooltip="$t('App.refresh.tooltip')"
       @click="refresh"
-      v-tooltip="'Force Refresh'">
-      <i class="material-icons" ref="refresh">refresh</i>
+    >
+      <BaseIcon ref="refresh" icon="refresh"/>
       <span class="pane-name">Refresh</span>
     </a>
     <span class="active-bar"></span>
@@ -49,11 +57,37 @@ import ComponentsTab from './views/components/ComponentsTab.vue'
 import EventsTab from './views/events/EventsTab.vue'
 import VuexTab from './views/vuex/VuexTab.vue'
 import { SPECIAL_TOKENS } from '../util'
+import Keyboard from './mixins/keyboard'
 
 import { mapState } from 'vuex'
 
 export default {
   name: 'app',
+  mixins: [
+    Keyboard({
+      onKeyDown ({ key, code, modifiers }) {
+        switch (modifiers) {
+          case 'ctrl+alt':
+            if (key === 'r' || code === 'KeyR') {
+              this.refresh()
+              return false
+            }
+            break
+          case 'ctrl':
+            if (code === 'Digit1') {
+              this.switchTab('components')
+              return false
+            } else if (code === 'Digit2') {
+              this.switchTab('vuex')
+              return false
+            } else if (code === 'Digit3') {
+              this.switchTab('events')
+              return false
+            }
+        }
+      }
+    })
+  ],
   components: {
     components: ComponentsTab,
     vuex: VuexTab,
@@ -79,7 +113,7 @@ export default {
       }
     },
     refresh () {
-      const refreshIcon = this.$refs.refresh
+      const refreshIcon = this.$refs.refresh.$el
       refreshIcon.style.animation = 'none'
 
       bridge.send('refresh')
@@ -177,19 +211,26 @@ export default {
   .dark &
     background-color $dark-background-color
 
+  .svg-icon
+    width 20px
+    height @width
+    margin-right 5px
+    >>> svg
+      fill @color
+      transition fill .35s ease
+
   &:hover
     color #555
+    .svg-icon >>> svg
+      fill @color
 
   &.active
     color $active-color
+    .svg-icon >>> svg
+      fill @color
 
   &:first-of-type
     margin-left auto
-
-  .material-icons
-    font-size 20px
-    margin-right 5px
-    color inherit
 
   .pane-name
     display none
